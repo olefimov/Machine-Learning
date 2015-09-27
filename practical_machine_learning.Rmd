@@ -1,0 +1,118 @@
+---
+title: "Practical Machine Learning CP"
+author: "Oleg Efimov"
+date: "26 Sep 2015"
+output: html_document
+---
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+###Data 
+
+The training data for this project are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+###Reproduceability
+The same set of libraries and the seed point (12345) should be used to reproduce the same result
+
+###Cross-validation
+Cross-validation will be performed by subsampling our training data set randomly without replacement into 2 subsamples: subTraining data (60% of the original Training data set) and subTesting data (40%). Our models will be fitted on the subTraining data set, and tested on the subTesting data. Once the most accurate model is choosen, it will be tested on the original Testing data set.
+
+###Loading packages and libraries
+```{r warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+
+set.seed(12345)
+```
+
+
+###Loading data
+```{r}
+training <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA","#DIV/0!",""))
+
+dim(training)
+dim(testing)
+```
+
+###Cleaning data
+```{r}
+#delete columnts with all missing values
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+
+#finding columns with near-zero-values
+nzv_columns <- nearZeroVar(training,saveMetrics=FALSE)
+
+#removing such columns from the training set
+training <- training[-c(nzv_columns)]
+testing <- testing[-c(nzv_columns)]
+
+#removing variables which are irrelevant to our current project (columns 1 to 7)
+training <- training[,-c(1:7)]
+testing <- testing[,-c(1:7)]
+
+dim(training)
+dim(testing)
+```
+###Split the dataset into a 60% training and 40% probing dataset to allow cross-validation
+```{r}
+inTrain <- createDataPartition(training$classe, p=0.6, list=FALSE)
+sTraining <- training[inTrain,]
+sTesting <- training[-inTrain,]
+```
+
+###Using Decision Tree as the first prediction model  
+```{r}
+model1 <- rpart(classe ~ ., data = sTraining, method = "class")
+
+#Plot of the Decision Tree
+rpart.plot(model1, main="Decision Tree", extra=102, under=TRUE, faclen=0)
+
+#Predicting:
+prediction1 <- predict(model1, sTesting, type = "class")
+
+#Using confusion matrix to test result
+confusionMatrix(prediction1, sTesting$classe)
+```
+
+###Using Random Forest as the second prediction model  
+``` {r}
+model2 <- randomForest(classe ~. , data=sTraining, method="class")
+#Predicting:
+prediction2 <- predict(model2, sTesting, type = "class")
+
+#Test results on subTesting data set:
+confusionMatrix(prediction2, sTesting$classe)
+```
+
+###Decision
+
+A Random Forest model gives us much more accuracy that a Decision Tree model (0.994 vs 0.7039). 
+Thus choosing the Random Forest model. Our Test data set includes 20 cases. With an accuracy above 99% on our cross-validation data, we can expect that very few, or none, of the test samples will be missclassified.
+
+###Submission
+```{r}
+# predict outcome levels on the original Testing data set using Random Forest algorithm
+prediction <- predict(model2, testing, type="class")
+prediction
+
+# Write files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction)
+```
